@@ -76,9 +76,11 @@ def detect_sql_injection(text: str) -> bool:
 
 @app.route('/')
 def home():
-    html = '''
+    return render_template_string(get_home_html())
+def get_home_html():
+    return '''
     <h1>🔒 My Secure Cloud System</h1>
-    <p>Beginner friendly • AES-256 • Anti SQL Injection</p>
+    <p>Beginner friendly • AES-256 • Anti SQL Injection • Live on Render</p>
     
     <h2>1. Register</h2>
     <form action="/register" method="post">
@@ -95,20 +97,18 @@ def home():
         <button type="submit">Login</button>
     </form>
     '''
-    return render_template_string(html)
-
 
 @app.route('/register', methods=['POST'])
 def register():
-    username = request.form.get('username')
-    password = request.form.get('password')
-    sensitive = request.form.get('sensitive')
+    username = request.form.get('username', '')
+    password = request.form.get('password', '')
+    sensitive = request.form.get('sensitive', '')
 
     if detect_sql_injection(username) or detect_sql_injection(password) or detect_sql_injection(sensitive):
-        return jsonify({'error': '🚨 Suspicious input blocked (SQL injection attempt)'}), 400
+        return render_template_string(get_home_html() + '<p style="color:red">🚨 Suspicious input blocked (possible SQL injection attempt)</p>')
 
     if User.query.filter_by(username=username).first():
-        return jsonify({'error': 'User already exists'}), 400
+        return render_template_string(get_home_html() + '<p style="color:red">User already exists</p>')
 
     user = User(
         username=username,
@@ -117,27 +117,32 @@ def register():
     )
     db.session.add(user)
     db.session.commit()
-    return jsonify({'message': '✅ Registered! Everything is AES-256 encrypted.'})
+    
+    return render_template_string(get_home_html() + '<p style="color:green">✅ Registered successfully! Everything is AES-256 encrypted.</p>')
 
 
 @app.route('/login', methods=['POST'])
 def login():
-    username = request.form.get('username')
-    password = request.form.get('password')
+    username = request.form.get('username', '')
+    password = request.form.get('password', '')
 
     if detect_sql_injection(username) or detect_sql_injection(password):
-        return jsonify({'error': '🚨 Suspicious input blocked'}), 400
+        return render_template_string(get_home_html() + '<p style="color:red">🚨 Suspicious input blocked</p>')
 
     user = User.query.filter_by(username=username).first()
     if not user or decrypt(user.encrypted_password) != password:
-        return jsonify({'error': 'Wrong username or password'}), 401
+        return render_template_string(get_home_html() + '<p style="color:red">❌ Wrong username or password</p>')
 
     capability_code = generate_capability(user.id)
-    return jsonify({
-        'message': '✅ Login successful!',
-        'capability_code': capability_code,
-        'how_to_use': 'Copy this code. Use it as Bearer token in Authorization header for /profile'
-    })
+    
+    success_html = f'''
+    <p style="color:green">✅ Login successful!</p>
+    <p><strong>Your Capability Code (copy this):</strong><br>
+    <code style="word-break:break-all;">{capability_code}</code></p>
+    <p>Use this code in Postman or curl with header: Authorization: Bearer [code]</p>
+    <p><a href="/profile" style="color:blue">→ Test Profile (you still need Postman for this)</a></p>
+    '''
+    return render_template_string(get_home_html() + success_html)
 
 
 @app.route('/profile', methods=['GET'])
