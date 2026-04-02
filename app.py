@@ -169,16 +169,15 @@ def login():
 
     success_message = f'''
     <div class="card" style="background:#d5f4e6;">
-        <h2>✅ Login Successful!</h2>
-        <p><strong>Username:</strong> {username}</p>
+        <h2>✅ Welcome, {username}!</h2>
         <p><strong>Sensitive Information (Decrypted):</strong> {sensitive_data}</p>
-        <p class="success">This data was securely decrypted using AES-256</p>
+        <p class="success">✅ Data successfully decrypted using AES-256 encryption</p>
         
-        <h3>Your Capability Code (24 hours valid)</h3>
-        <code>{capability_code}</code>
+        <h3>Capability Code (valid for 24 hours)</h3>
+        <code style="font-size:13px;">{capability_code}</code>
         
         <br><br>
-        <a href="/profile"><button>View My Profile Page</button></a>
+        <a href="/profile"><button style="background:#27ae60;">View My Secure Profile</button></a>
     </div>
     '''
     return render_template_string(get_home_html(success_message))
@@ -189,14 +188,21 @@ def login():
 def profile(user_id):
     user = User.query.get(user_id)
     if not user:
-        return jsonify({'error': 'User not found'}), 404
+        return render_template_string(get_home_html('<p class="error">User not found</p>'))
 
     sensitive = decrypt(user.encrypted_sensitive)
-    return jsonify({
-        'username': user.username,
-        'sensitive_info': sensitive,
-        'note': 'Data decrypted using AES-256 • Capability code validated'
-    })
+
+    profile_html = f'''
+    <div class="card" style="background:#d5f4e6;">
+        <h2>🔐 My Secure Profile</h2>
+        <p><strong>Username:</strong> {user.username}</p>
+        <p><strong>Sensitive Information:</strong> {sensitive}</p>
+        <p class="success">This page is protected by Capability Code + AES-256 Encryption</p>
+        <br>
+        <a href="/"><button>← Back to Home</button></a>
+    </div>
+    '''
+    return render_template_string(get_home_html(profile_html))
 
 
 # Logging for Gunicorn
