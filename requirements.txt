@@ -1,0 +1,5 @@
+flask==3.0.3
+flask-sqlalchemy==3.1.1
+cryptography==43.0.3
+PyJWT==2.9.0
+gunicorn==23.0.0
