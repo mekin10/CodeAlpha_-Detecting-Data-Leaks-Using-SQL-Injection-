@@ -1,3 +1,4 @@
+import logging
 import os
 import base64
 from datetime import datetime, timedelta
@@ -12,8 +13,19 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # === SECRETS (we will set these safely) ===
-AES_KEY = base64.urlsafe_b64decode(os.environ.get('AES_KEY_BASE64', 'DEFAULT32BYTEKEYFORAES256GCM==')[:44] + '==')[:32]
-JWT_SECRET = os.environ.get('JWT_SECRET', 'change-this-secret-in-production-12345')
+# Safe AES key loading
+aes_key_b64 = os.environ.get('AES_KEY_BASE64')
+if not aes_key_b64:
+    raise ValueError("Missing AES_KEY_BASE64 environment variable!")
+try:
+    AES_KEY = base64.urlsafe_b64decode(aes_key_b64)
+    if len(AES_KEY) != 32:
+        raise ValueError("AES_KEY must be exactly 32 bytes after decoding")
+except Exception as e:
+    raise ValueError(f"Invalid AES_KEY_BASE64: {str(e)}")
+JWT_SECRET = os.environ.get(
+    'JWT_SECRET', 'change-this-secret-in-production-12345')
+
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -21,11 +33,13 @@ class User(db.Model):
     encrypted_password = db.Column(db.Text, nullable=False)
     encrypted_sensitive = db.Column(db.Text, nullable=False)
 
+
 def encrypt(data: str) -> str:
     aesgcm = AESGCM(AES_KEY)
     nonce = os.urandom(12)
     ct = aesgcm.encrypt(nonce, data.encode(), None)
     return base64.b64encode(nonce + ct).decode()
+
 
 def decrypt(encrypted: str) -> str:
     data = base64.b64decode(encrypted)
@@ -33,9 +47,12 @@ def decrypt(encrypted: str) -> str:
     aesgcm = AESGCM(AES_KEY)
     return aesgcm.decrypt(nonce, ct, None).decode()
 
+
 def generate_capability(user_id: int) -> str:
-    payload = {'user_id': user_id, 'exp': datetime.utcnow() + timedelta(minutes=60)}
+    payload = {'user_id': user_id, 'exp': datetime.utcnow() +
+               timedelta(minutes=60)}
     return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
+
 
 def require_capability(f):
     def decorated(*args, **kwargs):
@@ -43,16 +60,19 @@ def require_capability(f):
         if not token or not token.startswith('Bearer '):
             return jsonify({'error': 'Capability code required'}), 401
         try:
-            data = jwt.decode(token.split()[1], JWT_SECRET, algorithms=['HS256'])
+            data = jwt.decode(token.split()[1],
+                              JWT_SECRET, algorithms=['HS256'])
             return f(*args, **kwargs, user_id=data['user_id'])
         except:
             return jsonify({'error': 'Invalid capability code'}), 401
     decorated.__name__ = f.__name__
     return decorated
 
+
 def detect_sql_injection(text: str) -> bool:
     bad = ['OR 1=1', 'DROP', 'UNION', '--', ';', 'EXEC', 'DELETE']
     return any(word.upper() in text.upper() for word in bad)
+
 
 @app.route('/')
 def home():
@@ -77,6 +97,7 @@ def home():
     '''
     return render_template_string(html)
 
+
 @app.route('/register', methods=['POST'])
 def register():
     username = request.form.get('username')
@@ -98,6 +119,7 @@ def register():
     db.session.commit()
     return jsonify({'message': '✅ Registered! Everything is AES-256 encrypted.'})
 
+
 @app.route('/login', methods=['POST'])
 def login():
     username = request.form.get('username')
@@ -117,6 +139,7 @@ def login():
         'how_to_use': 'Copy this code. Use it as Bearer token in Authorization header for /profile'
     })
 
+
 @app.route('/profile', methods=['GET'])
 @require_capability
 def profile(user_id):
@@ -128,7 +151,20 @@ def profile(user_id):
         'note': 'This data was encrypted in the database!'
     })
 
+
+# === ADD THIS LOGGING SETUP FOR GUNICORN (very important for Render) ===
+if __name__ != '__main__':
+    # When running under Gunicorn, use Gunicorn's logger
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel(gunicorn_logger.level)
+
+# === CREATE DB TABLES ON STARTUP ===
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(host='0.0.0.0', port=5000, debug=True)
+else:
+    # For production (Gunicorn)
+    with app.app_context():
+        db.create_all()
