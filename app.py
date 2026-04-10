@@ -149,7 +149,7 @@ def register():
     )
     db.session.add(user)
     db.session.commit()
-    return render_template_string(get_home_html('<p class="success">✅😀 Registered successfully! Data is AES-256 encrypted.</p>'))
+    return render_template_string(get_home_html('<p class="success">✅ Registered successfully! Data is AES-256 encrypted.</p>'))
 
 
 @app.route('/login', methods=['POST'])
